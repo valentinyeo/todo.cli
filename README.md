@@ -30,8 +30,8 @@ todo.cli clear --done --yes       # only the checked items
 todo.cli path                      # where the store lives
 ```
 
-Set `TODO_CLI_FILE` to point the CLI at a different file (handy for tests or
-alternate lists); otherwise it uses the same `Desktop\todo.txt` as the GUI.
+Set `TODO_CLI_FILE` to point the CLI (and the GUI) at a different file (handy
+for tests or alternate lists); otherwise both use the same `Desktop\todo.txt`.
 
 **Install to the Start Menu** (per-user, no admin):
 

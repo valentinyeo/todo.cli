@@ -1023,6 +1023,7 @@ fn onMouseMove(pt: w.POINT) void {
 
 fn onLButtonDown(pt: w.POINT) void {
     g.pinned = true; // interacting keeps the panel open
+    _ = w.SetFocus(g.hwnd); // so keyboard shortcuts work after clicking the panel
     const L = computeLayout();
 
     if (g.confirm_purge) {
@@ -1418,6 +1419,18 @@ fn editProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.win
         },
         w.WM_KEYDOWN => {
             if (wp != w.VK_SHIFT and wp != w.VK_CONTROL and wp != w.VK_MENU) g.pinned = true;
+            // The panel's own shortcuts must still work while the input has focus
+            // (but let Ctrl+C/V/X/A/Z etc. fall through to the edit control).
+            if (!is_row) {
+                if (g.confirm_purge) {
+                    onKey(wp);
+                    return 0;
+                }
+                if (w.GetKeyState(@intCast(w.VK_CONTROL)) < 0 and (wp == w.VK_DELETE or wp == 'E')) {
+                    onKey(wp);
+                    return 0;
+                }
+            }
             if (wp == w.VK_RETURN or wp == w.VK_ESCAPE) {
                 if (is_row) {
                     endEdit(wp == w.VK_RETURN);
@@ -1689,6 +1702,17 @@ fn wndProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.wina
 // Entry point
 // ---------------------------------------------------------------------------
 fn initPath() void {
+    // Optional override (tests / alternate lists), same as the CLI.
+    const envname = std.unicode.utf8ToUtf16LeStringLiteral("TODO_CLI_FILE");
+    var ebuf: [260]u16 = undefined;
+    const en = w.GetEnvironmentVariableW(envname, &ebuf, ebuf.len);
+    if (en != 0 and en < ebuf.len) {
+        var k: usize = 0;
+        while (k < en and k < g.todo_path.len - 1) : (k += 1) g.todo_path[k] = ebuf[k];
+        g.todo_path[k] = 0;
+        return;
+    }
+
     // Always use the Desktop todo.txt (resolved through the shell, so a
     // OneDrive-redirected Desktop still works), reused on every launch.
     const desktop = w.GUID{
