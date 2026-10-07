@@ -5,6 +5,7 @@ fn linkWin(mod: *std.Build.Module) void {
     mod.linkSystemLibrary("user32", .{});
     mod.linkSystemLibrary("shell32", .{});
     mod.linkSystemLibrary("ole32", .{});
+    mod.linkSystemLibrary("advapi32", .{});
 }
 
 pub fn build(b: *std.Build) void {

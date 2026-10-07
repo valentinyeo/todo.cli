@@ -80,6 +80,16 @@ fn initPath() void {
         }
         path_buf[k] = 0;
     }
+
+    // Optional override (handy for tests / alternate lists): TODO_CLI_FILE.
+    const envname = std.unicode.utf8ToUtf16LeStringLiteral("TODO_CLI_FILE");
+    var ebuf: [260]u16 = undefined;
+    const en = w.GetEnvironmentVariableW(envname, &ebuf, ebuf.len);
+    if (en != 0 and en < ebuf.len) {
+        var k: usize = 0;
+        while (k < en and k < path_buf.len - 1) : (k += 1) path_buf[k] = ebuf[k];
+        path_buf[k] = 0;
+    }
 }
 
 fn pathZ() w.PCWSTR {
@@ -402,17 +412,31 @@ pub fn main() u8 {
     // ---- clear ---------------------------------------------------------
     if (std.mem.eql(u8, cmd, "clear")) {
         var yes = false;
+        var done_only = false;
         var i: usize = 2;
         while (i < @as(usize, @intCast(argc))) : (i += 1) {
             var b: [64]u8 = undefined;
             const a = wideToUtf8(argv[i], &b);
             if (std.mem.eql(u8, a, "--yes") or std.mem.eql(u8, a, "-y")) yes = true;
+            if (std.mem.eql(u8, a, "--done") or std.mem.eql(u8, a, "--checked") or std.mem.eql(u8, a, "-d")) done_only = true;
         }
         if (!yes) {
             err("todo.cli: refusing to clear without --yes\n");
             return 1;
         }
-        count = 0;
+        if (done_only) {
+            var dst: usize = 0;
+            var k: usize = 0;
+            while (k < count) : (k += 1) {
+                if (!tasks[k].done) {
+                    tasks[dst] = tasks[k];
+                    dst += 1;
+                }
+            }
+            count = dst;
+        } else {
+            count = 0;
+        }
         _ = save();
         return 0;
     }

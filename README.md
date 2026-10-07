@@ -25,9 +25,13 @@ todo.cli add "buy oat milk"
 todo.cli done <n> | undone <n>     # n is the index shown by `list`
 todo.cli edit <n> "new text"
 todo.cli rm <n>
-todo.cli clear --yes
+todo.cli clear --yes              # everything
+todo.cli clear --done --yes       # only the checked items
 todo.cli path                      # where the store lives
 ```
+
+Set `TODO_CLI_FILE` to point the CLI at a different file (handy for tests or
+alternate lists); otherwise it uses the same `Desktop\todo.txt` as the GUI.
 
 **Install to the Start Menu** (per-user, no admin):
 
@@ -55,7 +59,7 @@ buttons, browser tabs, the tray — free of interference.
 | click the checkbox | tick the task off |
 | double-click a row | tick the task off |
 | click **Add** (or Enter in the field) | add the typed task |
-| click **Clear** | confirm, then empty the whole list |
+| click **Clear** | confirm: `y` clears all, `d` clears only checked |
 | mouse wheel / drag the scrollbar | scroll |
 
 **Keyboard**
@@ -66,7 +70,7 @@ buttons, browser tabs, the tray — free of interference.
 | `Ctrl+Enter` | edit the selected task inline |
 | `Ctrl+E` (or `Space`, `Enter`) | toggle done — completed tasks drop to the bottom |
 | `Delete` | remove the selected task |
-| `Ctrl+Delete` | clear the whole list (then `y` to confirm) |
+| `Ctrl+Delete` | clear (then `y` = all, `d` = checked only) |
 | `Esc` | cancel / hide the panel |
 
 **Opening focuses the field.** Whether you reveal it by hovering or with the
@@ -151,6 +155,11 @@ The whole UI is custom-drawn from one palette so it stays consistent. It's a
 Type: Segoe UI — title 17 px semibold, body 15 px, buttons 14 px medium,
 captions 12 px. Completed tasks use the body font with strikeout in `faint`.
 Everything scales with the display DPI.
+
+The table above is the **dark** palette. There is a matching **light** palette
+(`light_pal` in `src/main.zig`) and the app mirrors **your Windows theme** — it
+reads `AppsUseLightTheme` and switches live on `WM_SETTINGCHANGE`, no setting to
+change by hand.
 
 ## Footprint (measured, ReleaseSmall)
 

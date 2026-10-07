@@ -65,19 +65,67 @@ const txt_confirm_hint = utf8("press  y  to confirm  ·  esc  to cancel");
 //   faint     #71717A    tertiary text
 //   danger    #EF4444    destructive
 // ---------------------------------------------------------------------------
-const C_BG: w.COLORREF = 0x001B1818;
-const C_SURFACE: w.COLORREF = 0x00272323;
-const C_INPUT: w.COLORREF = 0x002B2525;
-const C_HOVER: w.COLORREF = 0x00312C2C;
-const C_SEL: w.COLORREF = 0x00362F2F;
-const C_BORDER: w.COLORREF = 0x003A3333;
-const C_ACCENT: w.COLORREF = 0x00F16663;
-const C_ACCENT_HI: w.COLORREF = 0x00F88C81;
-const C_TEXT: w.COLORREF = 0x00E7E4E4;
-const C_MUTED: w.COLORREF = 0x00AAA1A1;
-const C_FAINT: w.COLORREF = 0x007A7171;
-const C_DANGER: w.COLORREF = 0x004444EF;
-const C_WHITE: w.COLORREF = 0x00FAFAFA;
+var C_BG: w.COLORREF = 0x001B1818;
+var C_SURFACE: w.COLORREF = 0x00272323;
+var C_INPUT: w.COLORREF = 0x002B2525;
+var C_HOVER: w.COLORREF = 0x00312C2C;
+var C_SEL: w.COLORREF = 0x00362F2F;
+var C_BORDER: w.COLORREF = 0x003A3333;
+var C_ACCENT: w.COLORREF = 0x00F16663;
+var C_ACCENT_HI: w.COLORREF = 0x00F88C81;
+var C_TEXT: w.COLORREF = 0x00E7E4E4;
+var C_MUTED: w.COLORREF = 0x00AAA1A1;
+var C_FAINT: w.COLORREF = 0x007A7171;
+var C_DANGER: w.COLORREF = 0x004444EF;
+var C_WHITE: w.COLORREF = 0x00FAFAFA;
+
+const Palette = struct {
+    bg: w.COLORREF,
+    surface: w.COLORREF,
+    input: w.COLORREF,
+    hover: w.COLORREF,
+    sel: w.COLORREF,
+    border: w.COLORREF,
+    accent: w.COLORREF,
+    accent_hi: w.COLORREF,
+    text: w.COLORREF,
+    muted: w.COLORREF,
+    faint: w.COLORREF,
+    danger: w.COLORREF,
+    on_accent: w.COLORREF,
+};
+
+const dark_pal = Palette{
+    .bg = 0x001B1818,
+    .surface = 0x00272323,
+    .input = 0x002B2525,
+    .hover = 0x00312C2C,
+    .sel = 0x00362F2F,
+    .border = 0x003A3333,
+    .accent = 0x00F16663,
+    .accent_hi = 0x00F88C81,
+    .text = 0x00E7E4E4,
+    .muted = 0x00AAA1A1,
+    .faint = 0x007A7171,
+    .danger = 0x004444EF,
+    .on_accent = 0x00FAFAFA,
+};
+
+const light_pal = Palette{
+    .bg = 0x00F5F4F4,
+    .surface = 0x00FFFFFF,
+    .input = 0x00FFFFFF,
+    .hover = 0x00ECE9E9,
+    .sel = 0x00FBE8E7,
+    .border = 0x00DBD6D6,
+    .accent = 0x00E5464F,
+    .accent_hi = 0x00F16663,
+    .text = 0x001B1818,
+    .muted = 0x005B5252,
+    .faint = 0x00AAA1A1,
+    .danger = 0x002626DC,
+    .on_accent = 0x00FFFFFF,
+};
 
 // ---------------------------------------------------------------------------
 // Hotkeys
@@ -164,6 +212,8 @@ const State = struct {
     resizing: bool = false,
     hover_resize: bool = false,
     dock_width: i32 = 0,
+    light: bool = false,
+    theme_ready: bool = false,
     config_path: [260]u16 = [_]u16{0} ** 260,
 
     // tasks
@@ -221,7 +271,104 @@ fn rect(l: i32, t: i32, r: i32, b: i32) w.RECT {
 }
 
 fn invalidate() void {
+    if (g.hwnd == null) return;
     _ = w.InvalidateRect(g.hwnd, null, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Theme: mirror the Windows light/dark setting
+// ---------------------------------------------------------------------------
+fn personalizeKey() w.PCWSTR {
+    const S = struct {
+        var buf: [128]u16 = undefined;
+        var built: bool = false;
+    };
+    if (!S.built) {
+        const parts = [_][]const u8{ "Software", "Microsoft", "Windows", "CurrentVersion", "Themes", "Personalize" };
+        var k: usize = 0;
+        for (parts, 0..) |part, idx| {
+            if (idx != 0 and k < S.buf.len - 1) {
+                S.buf[k] = 0x5C;
+                k += 1;
+            }
+            for (part) |c| {
+                if (k < S.buf.len - 1) {
+                    S.buf[k] = c;
+                    k += 1;
+                }
+            }
+        }
+        S.buf[k] = 0;
+        S.built = true;
+    }
+    return @ptrCast(&S.buf);
+}
+
+fn isLightTheme() bool {
+    var data: w.DWORD = 0;
+    var size: w.DWORD = @sizeOf(w.DWORD);
+    const name = std.unicode.utf8ToUtf16LeStringLiteral("AppsUseLightTheme");
+    const res = w.RegGetValueW(w.HKEY_CURRENT_USER, personalizeKey(), name, w.RRF_RT_REG_DWORD, null, &data, &size);
+    if (res != 0) return false; // default to dark if the setting is absent
+    return data != 0;
+}
+
+fn createThemeObjects() void {
+    g.br_bg = w.CreateSolidBrush(C_BG);
+    g.br_surface = w.CreateSolidBrush(C_SURFACE);
+    g.br_input = w.CreateSolidBrush(C_INPUT);
+    g.br_hover = w.CreateSolidBrush(C_HOVER);
+    g.br_sel = w.CreateSolidBrush(C_SEL);
+    g.br_accent = w.CreateSolidBrush(C_ACCENT);
+    g.br_accent_hi = w.CreateSolidBrush(C_ACCENT_HI);
+    g.br_danger = w.CreateSolidBrush(C_DANGER);
+    g.pen_border = w.CreatePen(w.PS_SOLID, @max(1, px(1)), C_BORDER);
+    g.pen_accent = w.CreatePen(w.PS_SOLID, @max(1, px(1)), C_ACCENT);
+    g.pen_check = w.CreatePen(w.PS_SOLID, @max(2, px(2)), C_WHITE);
+    g.pen_danger = w.CreatePen(w.PS_SOLID, @max(1, px(1)), C_DANGER);
+}
+
+fn destroyThemeObjects() void {
+    _ = w.DeleteObject(g.br_bg);
+    _ = w.DeleteObject(g.br_surface);
+    _ = w.DeleteObject(g.br_input);
+    _ = w.DeleteObject(g.br_hover);
+    _ = w.DeleteObject(g.br_sel);
+    _ = w.DeleteObject(g.br_accent);
+    _ = w.DeleteObject(g.br_accent_hi);
+    _ = w.DeleteObject(g.br_danger);
+    _ = w.DeleteObject(g.pen_border);
+    _ = w.DeleteObject(g.pen_accent);
+    _ = w.DeleteObject(g.pen_check);
+    _ = w.DeleteObject(g.pen_danger);
+}
+
+fn applyTheme(light: bool) void {
+    const p = if (light) light_pal else dark_pal;
+    C_BG = p.bg;
+    C_SURFACE = p.surface;
+    C_INPUT = p.input;
+    C_HOVER = p.hover;
+    C_SEL = p.sel;
+    C_BORDER = p.border;
+    C_ACCENT = p.accent;
+    C_ACCENT_HI = p.accent_hi;
+    C_TEXT = p.text;
+    C_MUTED = p.muted;
+    C_FAINT = p.faint;
+    C_DANGER = p.danger;
+    C_WHITE = p.on_accent;
+    if (g.theme_ready) destroyThemeObjects();
+    createThemeObjects();
+    g.theme_ready = true;
+    g.light = light;
+    invalidate();
+}
+
+/// Re-read the OS theme and rebuild brushes/pens only if it actually changed.
+fn refreshTheme() void {
+    const light = isLightTheme();
+    if (light != g.light or !g.theme_ready) applyTheme(light);
 }
 
 // ---------------------------------------------------------------------------
@@ -399,6 +546,27 @@ fn purgeAll() void {
     g.sel = -1;
     g.scroll = 0;
     rebuildOrder();
+    save();
+    invalidate();
+}
+
+fn purgeDone() void {
+    var dst: usize = 0;
+    var i: usize = 0;
+    while (i < g.count) : (i += 1) {
+        if (!g.tasks[i].done) {
+            g.tasks[dst] = g.tasks[i];
+            dst += 1;
+        }
+    }
+    g.count = dst;
+    if (g.count == 0) {
+        g.sel = -1;
+    } else if (g.sel >= g.count) {
+        g.sel = @intCast(g.count);
+    }
+    rebuildOrder();
+    ensureVisible();
     save();
     invalidate();
 }
@@ -730,13 +898,15 @@ fn drawScene(hdc: w.HDC, full: w.RECT) void {
     // ---- purge confirm -------------------------------------------------
     if (g.confirm_purge) {
         const cw = g.panel_w - L.pad * 4;
-        const card = rect(L.pad * 2, @divTrunc(g.panel_h, 2) - px(44), L.pad * 2 + cw, @divTrunc(g.panel_h, 2) + px(44));
+        const card = rect(L.pad * 2, @divTrunc(g.panel_h, 2) - px(52), L.pad * 2 + cw, @divTrunc(g.panel_h, 2) + px(52));
         fillRounded(hdc, card, px(12), g.br_surface);
         strokeRounded(hdc, card, px(12), g.pen_danger);
-        var r1 = rect(card.left + px(8), card.top + px(16), card.right - px(8), card.top + px(44));
-        drawText(hdc, "Clear all tasks?", &r1, w.DT_CENTER | w.DT_VCENTER | w.DT_SINGLELINE, C_TEXT, g.font_title);
-        var r2 = rect(card.left + px(8), card.top + px(48), card.right - px(8), card.bottom - px(10));
-        drawText(hdc, "press y to confirm  ·  esc to cancel", &r2, w.DT_CENTER | w.DT_VCENTER | w.DT_SINGLELINE | w.DT_END_ELLIPSIS, C_MUTED, g.font_caption);
+        var r1 = rect(card.left + px(8), card.top + px(14), card.right - px(8), card.top + px(40));
+        drawText(hdc, "Clear tasks?", &r1, w.DT_CENTER | w.DT_VCENTER | w.DT_SINGLELINE, C_TEXT, g.font_title);
+        var r2 = rect(card.left + px(8), card.top + px(42), card.right - px(8), card.top + px(64));
+        drawText(hdc, "y = clear all     d = clear checked", &r2, w.DT_CENTER | w.DT_VCENTER | w.DT_SINGLELINE | w.DT_END_ELLIPSIS, C_TEXT, g.font_caption);
+        var r3 = rect(card.left + px(8), card.top + px(66), card.right - px(8), card.bottom - px(12));
+        drawText(hdc, "esc = cancel", &r3, w.DT_CENTER | w.DT_VCENTER | w.DT_SINGLELINE, C_MUTED, g.font_caption);
     }
 }
 
@@ -950,6 +1120,9 @@ fn onKey(wp: w.WPARAM) void {
         if (wp == 'Y' or wp == 'y') {
             g.confirm_purge = false;
             purgeAll();
+        } else if (wp == 'D' or wp == 'd') {
+            g.confirm_purge = false;
+            purgeDone();
         } else if (wp == w.VK_ESCAPE or wp == 'N' or wp == 'n') {
             g.confirm_purge = false;
             invalidate();
@@ -1379,6 +1552,10 @@ fn wndProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.wina
             positionInput();
             return 0;
         },
+        w.WM_SETTINGCHANGE, w.WM_THEMECHANGED => {
+            refreshTheme();
+            return 0;
+        },
         w.WM_ACTIVATE => {
             // Clicking anywhere outside the panel closes it immediately.
             if ((wp & 0xFFFF) == w.WA_INACTIVE and g.expanded and !g.docked) {
@@ -1500,18 +1677,7 @@ fn wndProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.wina
             _ = w.DeleteObject(g.font_done);
             _ = w.DeleteObject(g.font_caption);
             _ = w.DeleteObject(g.font_button);
-            _ = w.DeleteObject(g.br_bg);
-            _ = w.DeleteObject(g.br_surface);
-            _ = w.DeleteObject(g.br_input);
-            _ = w.DeleteObject(g.br_hover);
-            _ = w.DeleteObject(g.br_sel);
-            _ = w.DeleteObject(g.br_accent);
-            _ = w.DeleteObject(g.br_accent_hi);
-            _ = w.DeleteObject(g.br_danger);
-            _ = w.DeleteObject(g.pen_border);
-            _ = w.DeleteObject(g.pen_accent);
-            _ = w.DeleteObject(g.pen_check);
-            _ = w.DeleteObject(g.pen_danger);
+            if (g.theme_ready) destroyThemeObjects();
             w.PostQuitMessage(0);
             return 0;
         },
@@ -1599,18 +1765,7 @@ pub fn main() void {
     g.x_collapsed = g.area_right - px(6);
     g.x = g.x_collapsed;
 
-    g.br_bg = w.CreateSolidBrush(C_BG);
-    g.br_surface = w.CreateSolidBrush(C_SURFACE);
-    g.br_input = w.CreateSolidBrush(C_INPUT);
-    g.br_hover = w.CreateSolidBrush(C_HOVER);
-    g.br_sel = w.CreateSolidBrush(C_SEL);
-    g.br_accent = w.CreateSolidBrush(C_ACCENT);
-    g.br_accent_hi = w.CreateSolidBrush(C_ACCENT_HI);
-    g.br_danger = w.CreateSolidBrush(C_DANGER);
-    g.pen_border = w.CreatePen(w.PS_SOLID, @max(1, px(1)), C_BORDER);
-    g.pen_accent = w.CreatePen(w.PS_SOLID, @max(1, px(1)), C_ACCENT);
-    g.pen_check = w.CreatePen(w.PS_SOLID, @max(2, px(2)), C_WHITE);
-    g.pen_danger = w.CreatePen(w.PS_SOLID, @max(1, px(1)), C_DANGER);
+    refreshTheme();
 
     g.font_title = w.CreateFontW(-px(17), 0, 0, 0, w.FW_SEMIBOLD, 0, 0, 0, w.DEFAULT_CHARSET, 0, 0, w.CLEARTYPE_QUALITY, w.DEFAULT_PITCH, txt_face);
     g.font_body = w.CreateFontW(-px(15), 0, 0, 0, w.FW_NORMAL, 0, 0, 0, w.DEFAULT_CHARSET, 0, 0, w.CLEARTYPE_QUALITY, w.DEFAULT_PITCH, txt_face);

@@ -558,3 +558,13 @@ pub extern "shell32" fn CommandLineToArgvW(lpCmdLine: PCWSTR, pNumArgs: *i32) ca
 pub extern "kernel32" fn LocalFree(hMem: HANDLE) callconv(.winapi) HANDLE;
 pub extern "kernel32" fn GetStdHandle(nStdHandle: DWORD) callconv(.winapi) HANDLE;
 pub extern "kernel32" fn GetFileAttributesExW(lpFileName: PCWSTR, fInfoLevelId: i32, lpFileInformation: *anyopaque) callconv(.winapi) BOOL;
+
+// ---------------------------------------------------------------------------
+// System theme (light / dark)
+// ---------------------------------------------------------------------------
+pub const HKEY = ?*anyopaque;
+pub const HKEY_CURRENT_USER: HKEY = @ptrFromInt(0x80000001);
+pub const RRF_RT_REG_DWORD: DWORD = 0x00000010;
+pub const WM_SETTINGCHANGE: UINT = 0x001A;
+pub const WM_THEMECHANGED: UINT = 0x031A;
+pub extern "advapi32" fn RegGetValueW(hkey: HKEY, lpSubKey: ?PCWSTR, lpValue: ?PCWSTR, dwFlags: DWORD, pdwType: ?*DWORD, pvData: ?*anyopaque, pcbData: ?*DWORD) callconv(.winapi) i32;
