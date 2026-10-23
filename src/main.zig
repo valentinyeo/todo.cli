@@ -1855,3 +1855,13 @@ pub fn main() void {
         _ = w.DispatchMessageW(&msg);
     }
 }
+
+test "wideToUtf8 refuses text that does not fit" {
+    const input = [_]u16{0x4E00} ** 683;
+    var out: [2048]u8 = undefined;
+    try std.testing.expect(wideToUtf8(&input, &out) == null);
+
+    var exact: [9]u8 = undefined;
+    const text = wideToUtf8(input[0..3], &exact) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("一一一", text);
+}

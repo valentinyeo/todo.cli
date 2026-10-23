@@ -41,4 +41,12 @@ pub fn build(b: *std.Build) void {
 
     const cli = b.addExecutable(.{ .name = "todo.cli", .root_module = cli_mod });
     b.installArtifact(cli);
+
+    const gui_tests = b.addTest(.{ .root_module = gui_mod });
+    const cli_tests = b.addTest(.{ .root_module = cli_mod });
+    const run_gui_tests = b.addRunArtifact(gui_tests);
+    const run_cli_tests = b.addRunArtifact(cli_tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_gui_tests.step);
+    test_step.dependOn(&run_cli_tests.step);
 }

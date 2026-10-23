@@ -451,3 +451,14 @@ pub fn main() u8 {
     usage();
     return 1;
 }
+
+test "cli wideToUtf8 refuses text that does not fit" {
+    var input: [513:0]u16 = @splat('a');
+    var dst: [512]u8 = undefined;
+    try std.testing.expectEqual(@as(usize, 0), wideToUtf8(&input, &dst).len);
+
+    input[512] = 0;
+    const text = wideToUtf8(&input, &dst);
+    try std.testing.expectEqual(@as(usize, 512), text.len);
+    try std.testing.expectEqualStrings("a" ** 512, text);
+}
