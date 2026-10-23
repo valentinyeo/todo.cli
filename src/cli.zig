@@ -221,7 +221,13 @@ fn printList(show_all: bool, as_json: bool) void {
 fn wideToUtf8(z: [*:0]u16, dst: []u8) []u8 {
     var len: usize = 0;
     while (z[len] != 0) : (len += 1) {}
-    const n = std.unicode.utf16LeToUtf8(dst, z[0..len]) catch return dst[0..0];
+    var it = std.unicode.Utf16LeIterator.init(z[0..len]);
+    var n: usize = 0;
+    while (it.nextCodepoint() catch return dst[0..0]) |codepoint| {
+        const size = std.unicode.utf8CodepointSequenceLength(codepoint) catch return dst[0..0];
+        if (size > dst.len - n) return dst[0..0];
+        n += std.unicode.utf8Encode(codepoint, dst[n..]) catch return dst[0..0];
+    }
     return dst[0..n];
 }
 
@@ -288,7 +294,7 @@ pub fn main() u8 {
 
     // ---- path ----------------------------------------------------------
     if (std.mem.eql(u8, cmd, "path")) {
-        var u8buf: [520]u8 = undefined;
+        var u8buf: [260 * 3]u8 = undefined;
         const wide = std.mem.sliceTo(&path_buf, 0);
         const n = std.unicode.utf16LeToUtf8(&u8buf, wide) catch 0;
         out(u8buf[0..n]);

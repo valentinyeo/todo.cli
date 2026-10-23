@@ -58,7 +58,7 @@ fn keyFromEnv() void {
     var buf: [512]u16 = undefined;
     const n = w.GetEnvironmentVariableW(name, &buf, buf.len);
     if (n == 0 or n >= buf.len) return;
-    var u8buf: [1024]u8 = undefined;
+    var u8buf: [512 * 3]u8 = undefined;
     const m = std.unicode.utf16LeToUtf8(&u8buf, buf[0..n]) catch return;
     setKey(u8buf[0..m]);
 }
