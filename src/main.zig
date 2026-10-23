@@ -252,13 +252,19 @@ fn px(v: i32) i32 {
 
 fn wide(utf8_bytes: []const u8, out: []u16) ?[:0]u16 {
     if (out.len == 0) return null;
-    const n = std.unicode.utf8ToUtf16Le(out[0..out.len - 1], utf8_bytes) catch return null;
+    const n = std.unicode.utf8ToUtf16Le(out[0 .. out.len - 1], utf8_bytes) catch return null;
     out[n] = 0;
     return out[0..n :0];
 }
 
 fn wideToUtf8(in: []const u16, out: []u8) ?[]u8 {
-    const n = std.unicode.utf16LeToUtf8(out, in) catch return null;
+    var it = std.unicode.Utf16LeIterator.init(in);
+    var n: usize = 0;
+    while (it.nextCodepoint() catch return null) |codepoint| {
+        const size = std.unicode.utf8CodepointSequenceLength(codepoint) catch return null;
+        if (size > out.len - n) return null;
+        n += std.unicode.utf8Encode(codepoint, out[n..]) catch return null;
+    }
     return out[0..n];
 }
 
@@ -1854,4 +1860,14 @@ pub fn main() void {
         _ = w.TranslateMessage(&msg);
         _ = w.DispatchMessageW(&msg);
     }
+}
+
+test "wideToUtf8 refuses text that does not fit" {
+    const input = [_]u16{0x4E00} ** 683;
+    var out: [2048]u8 = undefined;
+    try std.testing.expect(wideToUtf8(&input, &out) == null);
+
+    var exact: [9]u8 = undefined;
+    const text = wideToUtf8(input[0..3], &exact) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("一一一", text);
 }
