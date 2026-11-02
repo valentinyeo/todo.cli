@@ -163,6 +163,14 @@ const Task = struct {
     done: bool = false,
 };
 
+// A row press becomes a drag only after the cursor travels a few pixels, so a
+// plain click still just selects.
+const RowDrag = union(enum) {
+    idle,
+    pressed: struct { task: usize, y: i32 },
+    dragging: struct { task: usize, moved: bool },
+};
+
 const State = struct {
     hwnd: w.HWND = null,
     hinst: w.HINSTANCE = null,
@@ -230,6 +238,7 @@ const State = struct {
     drag_scroll: bool = false,
     drag_y: i32 = 0,
     drag_scroll0: i32 = 0,
+    row_drag: RowDrag = .idle,
     confirm_purge: bool = false,
     editing: bool = false,
     edit_index: isize = -1,
@@ -472,6 +481,35 @@ fn rebuildOrder() void {
             n += 1;
         }
     }
+}
+
+/// Array index the task at `from` must move to so it lands at display slot
+/// `slot`. The slot is clamped to the task's own group, so open tasks stay
+/// above done ones and the file keeps the order the panel shows.
+fn reorderTarget(tasks: []const Task, order: []const usize, from: usize, slot: usize) usize {
+    var open: usize = 0;
+    for (tasks) |t| {
+        if (!t.done) open += 1;
+    }
+    const lo: usize = if (tasks[from].done) open else 0;
+    const hi: usize = if (tasks[from].done) tasks.len - 1 else open - 1;
+    return order[std.math.clamp(slot, lo, hi)];
+}
+
+fn moveItem(comptime T: type, items: []T, from: usize, to: usize) void {
+    if (from < to) {
+        std.mem.rotate(T, items[from .. to + 1], 1);
+    } else if (to < from) {
+        std.mem.rotate(T, items[to .. from + 1], from - to);
+    }
+}
+
+/// Moves a task within its group to display slot `slot`; returns its new index.
+fn moveTaskToSlot(from: usize, slot: usize) usize {
+    const to = reorderTarget(g.tasks[0..g.count], g.order[0..g.count], from, slot);
+    moveItem(Task, g.tasks[0..g.count], from, to);
+    rebuildOrder();
+    return to;
 }
 
 fn displayPosOf(task_index: isize) isize {
@@ -1006,6 +1044,18 @@ fn onMouseMove(pt: w.POINT) void {
     if (hr != g.hover_row) changed = true;
     g.hover_row = hr;
 
+    switch (g.row_drag) {
+        .idle => {},
+        .pressed => |p| {
+            if (@abs(pt.y - p.y) >= px(4)) g.row_drag = .{ .dragging = .{ .task = p.task, .moved = false } };
+        },
+        .dragging => {},
+    }
+    if (g.row_drag == .dragging) {
+        dragRowTo(pt, L);
+        return;
+    }
+
     if (g.drag_scroll) {
         const track = rect(0, L.list_y, 0, L.list_bottom);
         _ = track;
@@ -1025,6 +1075,37 @@ fn onMouseMove(pt: w.POINT) void {
 
     var tme = w.TRACKMOUSEEVENT{ .dwFlags = w.TME_LEAVE, .hwndTrack = g.hwnd };
     _ = w.TrackMouseEvent(&tme);
+}
+
+fn dragRowTo(pt: w.POINT, L: Layout) void {
+    const d = &g.row_drag.dragging;
+    _ = w.SetCursor(w.LoadCursorW(null, @ptrFromInt(w.IDC_SIZENS)));
+
+    // Holding above or below the list scrolls it, one row per mouse move.
+    if (pt.y < L.list_y) g.scroll -= 1;
+    if (pt.y >= L.list_bottom) g.scroll += 1;
+    clampScroll(L);
+
+    const stride = L.row_h + L.row_gap;
+    const y = std.math.clamp(pt.y, L.list_y, L.list_bottom - 1);
+    const di = g.scroll + @divFloor(y - L.list_y, stride);
+    const slot: usize = @intCast(std.math.clamp(di, 0, @as(i32, @intCast(g.count)) - 1));
+
+    const to = moveTaskToSlot(d.task, slot);
+    if (to != d.task) d.moved = true;
+    d.task = to;
+    g.sel = @intCast(to);
+    g.hover_row = @intCast(to);
+    invalidate();
+}
+
+fn endRowDrag() void {
+    const moved = switch (g.row_drag) {
+        .dragging => |d| d.moved,
+        else => false,
+    };
+    g.row_drag = .idle;
+    if (moved) save();
 }
 
 fn onLButtonDown(pt: w.POINT) void {
@@ -1073,6 +1154,10 @@ fn onLButtonDown(pt: w.POINT) void {
             toggleDone(g.sel);
         } else {
             _ = w.SetFocus(g.hwnd);
+            if (!g.editing) {
+                g.row_drag = .{ .pressed = .{ .task = ti, .y = pt.y } };
+                _ = w.SetCapture(g.hwnd);
+            }
             invalidate();
         }
     }
@@ -1087,6 +1172,11 @@ fn onLButtonUp(pt: w.POINT) void {
     }
     if (g.drag_scroll) {
         g.drag_scroll = false;
+        _ = w.ReleaseCapture();
+        return;
+    }
+    if (g.row_drag != .idle) {
+        endRowDrag();
         _ = w.ReleaseCapture();
         return;
     }
@@ -1123,6 +1213,7 @@ fn ctrlDown() bool {
 
 fn onKey(wp: w.WPARAM) void {
     g.pinned = true; // interacting keeps the panel open
+    if (g.row_drag != .idle) return; // a key must not delete or move the task under the cursor
     if (g.confirm_purge) {
         if (wp == 'Y' or wp == 'y') {
             g.confirm_purge = false;
@@ -1609,6 +1700,10 @@ fn wndProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.wina
             onLButtonUp(pointFromLp(lp));
             return 0;
         },
+        w.WM_CAPTURECHANGED => {
+            endRowDrag();
+            return 0;
+        },
         w.WM_LBUTTONDBLCLK => {
             const L = computeLayout();
             if (hitDisplayRow(pointFromLp(lp), L)) |di| {
@@ -1870,4 +1965,47 @@ test "wideToUtf8 refuses text that does not fit" {
     var exact: [9]u8 = undefined;
     const text = wideToUtf8(input[0..3], &exact) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("一一一", text);
+}
+
+fn testTasks(comptime spec: []const u8) [spec.len]Task {
+    var out: [spec.len]Task = undefined;
+    for (spec, 0..) |c, i| {
+        out[i] = .{ .len = 1, .done = std.ascii.isUpper(c) };
+        out[i].text[0] = std.ascii.toLower(c);
+    }
+    return out;
+}
+
+fn expectFileOrder(tasks: []const Task, want: []const u8) !void {
+    var got: [MAX_TASKS]u8 = undefined;
+    for (tasks, 0..) |t, i| got[i] = if (t.done) std.ascii.toUpper(t.text[0]) else t.text[0];
+    try std.testing.expectEqualStrings(want, got[0..tasks.len]);
+}
+
+test "dragging a task moves it to the dropped slot and saves in that order" {
+    g.count = 4;
+    g.tasks[0..4].* = testTasks("abcd");
+    rebuildOrder();
+
+    try std.testing.expectEqual(@as(usize, 3), moveTaskToSlot(0, 3));
+    try expectFileOrder(g.tasks[0..g.count], "bcda");
+    try std.testing.expectEqual(@as(usize, 0), moveTaskToSlot(2, 0));
+    try expectFileOrder(g.tasks[0..g.count], "dbca");
+}
+
+test "a dragged task stays inside its open or done group" {
+    // file: a B c D  ->  shown: a c | B D
+    g.count = 4;
+    g.tasks[0..4].* = testTasks("aBcD");
+    rebuildOrder();
+
+    // open task dropped into the done section stops at the last open slot
+    const to = moveTaskToSlot(0, 3);
+    try expectFileOrder(g.tasks[0..g.count], "BcaD");
+    try std.testing.expectEqual(@as(isize, 1), displayPosOf(@intCast(to)));
+
+    // done task dragged to the top stops at the first done slot
+    _ = moveTaskToSlot(3, 0);
+    try expectFileOrder(g.tasks[0..g.count], "DBca");
+    try std.testing.expectEqual(@as(usize, 0), g.order[2]);
 }

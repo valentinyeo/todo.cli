@@ -368,6 +368,7 @@ pub const WM_LBUTTONDOWN: UINT = 0x0201;
 pub const WM_RBUTTONDOWN: UINT = 0x0204;
 pub const WM_MOUSEWHEEL: UINT = 0x020A;
 pub const WM_MOUSELEAVE: UINT = 0x02A3;
+pub const WM_CAPTURECHANGED: UINT = 0x0215;
 pub const WM_SETCURSOR: UINT = 0x0020;
 pub const WM_SIZE: UINT = 0x0005;
 
@@ -408,6 +409,7 @@ pub const FW_BOLD: i32 = 700;
 
 pub const IDC_HAND: usize = 32649;
 pub const IDC_SIZEWE: usize = 32644;
+pub const IDC_SIZENS: usize = 32645;
 pub const TME_LEAVE: DWORD = 0x00000002;
 pub const SW_HIDE: i32 = 0;
 pub const SW_SHOW: i32 = 5;

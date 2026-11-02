@@ -60,6 +60,7 @@ buttons, browser tabs, the tray — free of interference.
 | double-click a row | tick the task off |
 | click **Add** (or Enter in the field) | add the typed task |
 | click **Clear** | confirm: `y` clears all, `d` clears only checked |
+| drag a row up / down | reorder it (open tasks stay above done ones; saved to `todo.txt` on release) |
 | mouse wheel / drag the scrollbar | scroll |
 
 **Keyboard**
