@@ -580,3 +580,7 @@ pub extern "kernel32" fn MoveFileExW(existing: PCWSTR, new: PCWSTR, flags: DWORD
 pub extern "kernel32" fn DeleteFileW(path: PCWSTR) callconv(.winapi) BOOL;
 pub extern "shell32" fn ShellExecuteW(hwnd: HWND, op: ?PCWSTR, file: PCWSTR, params: ?PCWSTR, dir: ?PCWSTR, show: i32) callconv(.winapi) HINSTANCE;
 pub extern "winhttp" fn WinHttpQueryHeaders(req: HINTERNET, info: DWORD, name: ?PCWSTR, buffer: ?*anyopaque, len: *DWORD, index: ?*DWORD) callconv(.winapi) BOOL;
+pub const CS_DBLCLKS: UINT = 0x0008;
+pub const VK_F2: WPARAM = 0x71;
+pub const MF_SEPARATOR: UINT = 0x0800;
+pub const TPM_RETURNCMD: UINT = 0x0100;

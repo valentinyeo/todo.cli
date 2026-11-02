@@ -57,7 +57,8 @@ buttons, browser tabs, the tray — free of interference.
 |---|---|
 | click a row | select it |
 | click the checkbox | tick the task off |
-| double-click a row | tick the task off |
+| double-click a task's text | edit it inline (`Enter` saves, `Esc` cancels) |
+| right-click a task | menu: Edit, Mark done / not done, Delete |
 | click **Add** (or Enter in the field) | add the typed task |
 | click **Clear** | confirm: `y` clears all, `d` clears only checked |
 | drag a row up / down | reorder it (open tasks stay above done ones; saved to `todo.txt` on release) |
@@ -68,7 +69,7 @@ buttons, browser tabs, the tray — free of interference.
 | key | result |
 |---|---|
 | `j` / `k` or `↓` / `↑` | move selection down / up |
-| `Ctrl+Enter` | edit the selected task inline |
+| `F2` or `Ctrl+Enter` | edit the selected task inline |
 | `Ctrl+E` (or `Space`, `Enter`) | toggle done — completed tasks drop to the bottom |
 | `Delete` | remove the selected task |
 | `Ctrl+Delete` | clear (then `y` = all, `d` = checked only) |

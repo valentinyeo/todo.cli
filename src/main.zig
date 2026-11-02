@@ -930,7 +930,7 @@ fn drawScene(hdc: w.HDC, full: w.RECT) void {
     // ---- footer --------------------------------------------------------
     {
         var fr = rect(L.pad, L.footer_y, g.panel_w - L.pad, L.footer_y + px(20));
-        var hint: []const u8 = "j/k move   ctrl+enter edit   ctrl+e done   del remove";
+        var hint: []const u8 = "dbl-click/F2 edit   drag reorder   ctrl+e done   del remove";
         var color: w.COLORREF = C_FAINT;
         if (dict.state == .recording) {
             hint = "● Listening…  press again to stop";
@@ -1115,6 +1115,40 @@ fn endRowDrag() void {
     if (moved) save();
 }
 
+fn overCheckbox(pt: w.POINT, L: Layout, di: i32) bool {
+    const cb_left = rowRect(L, di).left + px(13);
+    return pt.x >= cb_left - px(4) and pt.x <= cb_left + px(18) + px(4);
+}
+
+const ID_ROW_EDIT: usize = 1;
+const ID_ROW_DONE: usize = 2;
+const ID_ROW_DELETE: usize = 3;
+
+fn onRightClick(pt: w.POINT) void {
+    if (g.editing or g.confirm_purge or g.row_drag != .idle) return;
+    const di = hitDisplayRow(pt, computeLayout()) orelse return;
+    const ti: isize = @intCast(g.order[@intCast(di)]);
+    g.pinned = true;
+    g.sel = ti;
+    invalidate();
+
+    var scr: w.POINT = .{};
+    _ = w.GetCursorPos(&scr);
+    const menu = w.CreatePopupMenu();
+    defer _ = w.DestroyMenu(menu);
+    _ = w.AppendMenuW(menu, w.MF_STRING, ID_ROW_EDIT, utf8("Edit\tF2"));
+    _ = w.AppendMenuW(menu, w.MF_STRING, ID_ROW_DONE, if (g.tasks[@intCast(ti)].done) utf8("Mark not done") else utf8("Mark done"));
+    _ = w.AppendMenuW(menu, w.MF_SEPARATOR, 0, null);
+    _ = w.AppendMenuW(menu, w.MF_STRING, ID_ROW_DELETE, utf8("Delete\tDel"));
+    const cmd = w.TrackPopupMenu(menu, w.TPM_RIGHTBUTTON | w.TPM_RETURNCMD, scr.x, scr.y, 0, g.hwnd, null);
+    switch (@as(usize, @intCast(cmd))) {
+        ID_ROW_EDIT => startEdit(),
+        ID_ROW_DONE => toggleDone(ti),
+        ID_ROW_DELETE => deleteTask(ti),
+        else => {},
+    }
+}
+
 fn onLButtonDown(pt: w.POINT) void {
     g.pinned = true; // interacting keeps the panel open
     _ = w.SetFocus(g.hwnd); // so keyboard shortcuts work after clicking the panel
@@ -1154,10 +1188,7 @@ fn onLButtonDown(pt: w.POINT) void {
     if (hitDisplayRow(pt, L)) |di| {
         const ti = g.order[@intCast(di)];
         g.sel = @intCast(ti);
-        const rc = rowRect(L, di);
-        const cb_left = rc.left + px(13);
-        const cb_right = cb_left + px(18);
-        if (pt.x >= cb_left - px(4) and pt.x <= cb_right + px(4)) {
+        if (overCheckbox(pt, L, di)) {
             toggleDone(g.sel);
         } else {
             _ = w.SetFocus(g.hwnd);
@@ -1250,6 +1281,7 @@ fn onKey(wp: w.WPARAM) void {
             } else deleteTask(g.sel);
         },
         w.VK_SPACE => toggleDone(g.sel),
+        w.VK_F2 => startEdit(),
         w.VK_RETURN => {
             if (ctrlDown()) startEdit() else toggleDone(g.sel);
         },
@@ -1735,10 +1767,22 @@ fn wndProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.wina
             return 0;
         },
         w.WM_LBUTTONDBLCLK => {
+            // The second click of a double-click arrives here instead of as a
+            // button-down: on a task's text it edits, elsewhere it clicks.
+            const pt = pointFromLp(lp);
             const L = computeLayout();
-            if (hitDisplayRow(pointFromLp(lp), L)) |di| {
-                toggleDone(@intCast(g.order[@intCast(di)]));
+            if (hitDisplayRow(pt, L)) |di| {
+                if (!overCheckbox(pt, L, di)) {
+                    g.sel = @intCast(g.order[@intCast(di)]);
+                    startEdit();
+                    return 0;
+                }
             }
+            onLButtonDown(pt);
+            return 0;
+        },
+        w.WM_RBUTTONUP => {
+            onRightClick(pointFromLp(lp));
             return 0;
         },
         w.WM_MOUSEWHEEL => {
@@ -1944,7 +1988,7 @@ pub fn main() void {
 
     var wc = w.WNDCLASSEXW{
         .cbSize = @sizeOf(w.WNDCLASSEXW),
-        .style = w.CS_HREDRAW | w.CS_VREDRAW,
+        .style = w.CS_HREDRAW | w.CS_VREDRAW | w.CS_DBLCLKS,
         .lpfnWndProc = wndProc,
         .cbClsExtra = 0,
         .cbWndExtra = 0,
