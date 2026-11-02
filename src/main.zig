@@ -12,6 +12,7 @@
 const std = @import("std");
 const w = @import("win32.zig");
 const dict = @import("dictation.zig");
+const upd = @import("update.zig");
 
 // ---------------------------------------------------------------------------
 // IDs / messages
@@ -22,13 +23,17 @@ const HOTKEY_DOCK: i32 = 3;
 const ID_TRAY_OPEN: usize = 201;
 const ID_TRAY_QUIT: usize = 202;
 const ID_TRAY_DOCK: usize = 203;
+const ID_TRAY_UPDATE: usize = 204;
 const WM_TRAY: w.UINT = w.WM_APP + 1;
 const WM_DICT_DONE: w.UINT = w.WM_APP + 2;
 const WM_SHOW: w.UINT = w.WM_APP + 3;
 const WM_APPBAR: w.UINT = w.WM_APP + 4;
+const WM_UPDATE_DONE: w.UINT = w.WM_APP + 5;
 
 const TIMER_POLL: usize = 1;
 const POLL_MS: u32 = 40;
+const TIMER_UPDATE: usize = 2;
+const UPDATE_MS: u32 = 6 * 60 * 60 * 1000;
 
 const MAX_TASKS = 256;
 const MAX_TEXT = 200;
@@ -248,6 +253,8 @@ const State = struct {
     hIcon: w.HICON = null,
     nid: w.NOTIFYICONDATAW = .{},
     todo_path: [260]u16 = [_]u16{0} ** 260,
+    mutex: w.HANDLE = null,
+    relaunch: bool = false,
 };
 
 var g: State = .{};
@@ -1484,8 +1491,20 @@ fn animate() void {
     setPanelX(g.x + step);
 }
 
+/// Restarts into a downloaded update only while nobody is using the panel.
+fn restartIfUpdateReady() void {
+    if (upd.status != .ready or g.relaunch) return;
+    const busy = g.editing or g.row_drag != .idle or g.resizing or g.drag_scroll or
+        g.confirm_purge or dict.state == .recording or dict.state == .transcribing;
+    const in_use = if (g.docked) w.GetForegroundWindow() == g.hwnd else g.expanded;
+    if (busy or in_use) return;
+    g.relaunch = true;
+    _ = w.DestroyWindow(g.hwnd);
+}
+
 fn onTick() void {
-    if (g.docked) return;
+    restartIfUpdateReady();
+    if (g.relaunch or g.docked) return;
     var pt: w.POINT = .{};
     if (w.GetCursorPos(&pt) == 0) return;
 
@@ -1626,6 +1645,17 @@ fn showTrayMenu() void {
     const menu = w.CreatePopupMenu();
     _ = w.AppendMenuW(menu, w.MF_STRING, ID_TRAY_OPEN, utf8("Open"));
     _ = w.AppendMenuW(menu, w.MF_STRING | (if (g.docked) w.MF_CHECKED else 0), ID_TRAY_DOCK, utf8("Docked mode"));
+    var lbuf: [64]u8 = undefined;
+    var l16: [64]u16 = undefined;
+    const label: []const u8 = switch (upd.status) {
+        .checking => "Checking for updates…",
+        .ready => std.fmt.bufPrint(&lbuf, "Restarting into v{d}…", .{upd.latest}) catch "",
+        .up_to_date => if (upd.version == 0) "Up to date (local build)" else std.fmt.bufPrint(&lbuf, "Up to date (v{d})", .{upd.version}) catch "",
+        .failed => "Update check failed, retry",
+        .idle => "Check for updates",
+    };
+    const grayed = upd.status == .checking or upd.status == .ready;
+    if (wide(label, &l16)) |lw| _ = w.AppendMenuW(menu, w.MF_STRING | (if (grayed) w.MF_GRAYED else 0), ID_TRAY_UPDATE, lw);
     _ = w.AppendMenuW(menu, w.MF_STRING, ID_TRAY_QUIT, utf8("Quit"));
     _ = w.TrackPopupMenu(menu, w.TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.hwnd, null);
     _ = w.PostMessageW(g.hwnd, w.WM_NULL, 0, 0);
@@ -1754,11 +1784,16 @@ fn wndProc(hwnd: w.HWND, msg: w.UINT, wp: w.WPARAM, lp: w.LPARAM) callconv(.wina
             const id = wp & 0xFFFF;
             if (id == ID_TRAY_OPEN) expandAndFocus();
             if (id == ID_TRAY_DOCK) toggleDock();
+            if (id == ID_TRAY_UPDATE) upd.checkAsync();
             if (id == ID_TRAY_QUIT) _ = w.DestroyWindow(g.hwnd);
             return 0;
         },
         w.WM_TIMER => {
-            onTick();
+            if (wp == TIMER_UPDATE) upd.checkAsync() else onTick();
+            return 0;
+        },
+        WM_UPDATE_DONE => {
+            restartIfUpdateReady();
             return 0;
         },
         w.WM_SETCURSOR => {
@@ -1860,7 +1895,7 @@ fn appendTodoName(dst: *[260]u16, k: *usize) void {
 
 pub fn main() void {
     // Single instance: a second launch just reveals the existing panel.
-    _ = w.CreateMutexW(null, 1, utf8("zigtodo_singleton_mutex_v1"));
+    g.mutex = w.CreateMutexW(null, 1, utf8("zigtodo_singleton_mutex_v1"));
     if (w.GetLastError() == w.ERROR_ALREADY_EXISTS) {
         const existing = w.FindWindowW(cls_name, null);
         if (existing != null) _ = w.PostMessageW(existing, WM_SHOW, 0, 0);
@@ -1950,10 +1985,23 @@ pub fn main() void {
 
     load();
 
+    upd.target = g.hwnd;
+    upd.done_msg = WM_UPDATE_DONE;
+    upd.cleanup();
+    if (upd.version != 0) {
+        upd.checkAsync();
+        _ = w.SetTimer(g.hwnd, TIMER_UPDATE, UPDATE_MS, null);
+    }
+
     var msg: w.MSG = .{};
     while (w.GetMessageW(&msg, null, 0, 0) > 0) {
         _ = w.TranslateMessage(&msg);
         _ = w.DispatchMessageW(&msg);
+    }
+
+    if (g.relaunch) {
+        _ = w.CloseHandle(g.mutex); // free the single-instance name for the new process
+        upd.relaunch();
     }
 }
 
@@ -2008,4 +2056,8 @@ test "a dragged task stays inside its open or done group" {
     _ = moveTaskToSlot(3, 0);
     try expectFileOrder(g.tasks[0..g.count], "DBca");
     try std.testing.expectEqual(@as(usize, 0), g.order[2]);
+}
+
+test {
+    _ = upd;
 }

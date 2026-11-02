@@ -17,10 +17,35 @@ jobs:
         with:
           version: 0.16.0
       - run: zig build test --summary all
-      - run: zig build -Doptimize=ReleaseSmall
+      # The run number is the release number the self-updater compares against.
+      - run: zig build -Doptimize=ReleaseSmall -Dversion=${{ github.run_number }}
       - uses: actions/upload-artifact@v4
         with:
           name: zigtodo-windows
           path: |
             zig-out/bin/zigtodo.exe
             zig-out/bin/todo.cli.exe
+
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zigtodo-windows
+      - run: echo "${{ github.run_number }}" > version.txt
+      # A re-run reuses the run number, so refresh the existing release's files.
+      - run: |
+          tag="v${{ github.run_number }}"
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$tag" zigtodo.exe todo.cli.exe version.txt --clobber --repo "${{ github.repository }}"
+          else
+            gh release create "$tag" zigtodo.exe todo.cli.exe version.txt \
+              --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+              --title "$tag" --notes "Built from ${{ github.sha }}"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

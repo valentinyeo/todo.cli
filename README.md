@@ -117,6 +117,24 @@ won't hide it (the hotkey toggles dock on/off instead).
 **Drag the left edge** of the bar to make it narrower or wider (220–680 px). The
 width is saved too, so your docked size comes back next launch.
 
+## Updates
+
+Every push to `main` is built by GitHub Actions and published as a release
+(`v<N>`, with `zigtodo.exe`, `todo.cli.exe` and `version.txt`). Release builds
+know their own `N` and keep themselves current:
+
+- they check for a newer release at startup and every 6 hours;
+- a newer `zigtodo.exe` is downloaded and swapped in next to the running one
+  (the old exe is kept as `zigtodo.exe.old` until the next launch);
+- the panel restarts into it once it is closed (or, when docked, not focused),
+  so it never restarts while you are typing or dragging.
+
+The tray menu shows the current state and has **Check for updates**. A local
+`zig build` reports version 0: it never updates on its own, but the tray item
+still replaces it with the latest release. Build with `-Dversion=<N>` to bake a
+number in. Updates need the exe in a folder you can write to, which
+`tools/install.ps1` (`%LOCALAPPDATA%\Programs\zigtodo`) is.
+
 ## Dictation (Deepgram)
 
 Press **`Ctrl+Alt+D`**, speak, press it again. The recording is sent to

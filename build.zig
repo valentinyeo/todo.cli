@@ -19,6 +19,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     linkWin(gui_mod);
+    const opts = b.addOptions();
+    opts.addOption(u32, "version", b.option(u32, "version", "Release number baked in for the self-updater (0 = local build)") orelse 0);
+    gui_mod.addOptions("build_options", opts);
     gui_mod.linkSystemLibrary("gdi32", .{});
     gui_mod.linkSystemLibrary("winmm", .{});
     gui_mod.linkSystemLibrary("winhttp", .{});

@@ -570,3 +570,13 @@ pub const RRF_RT_REG_DWORD: DWORD = 0x00000010;
 pub const WM_SETTINGCHANGE: UINT = 0x001A;
 pub const WM_THEMECHANGED: UINT = 0x031A;
 pub extern "advapi32" fn RegGetValueW(hkey: HKEY, lpSubKey: ?PCWSTR, lpValue: ?PCWSTR, dwFlags: DWORD, pdwType: ?*DWORD, pvData: ?*anyopaque, pcbData: ?*DWORD) callconv(.winapi) i32;
+
+pub const MOVEFILE_REPLACE_EXISTING: DWORD = 0x1;
+pub const MOVEFILE_WRITE_THROUGH: DWORD = 0x8;
+pub extern "kernel32" fn FlushFileBuffers(h: HANDLE) callconv(.winapi) BOOL;
+pub const WINHTTP_QUERY_FLAG_NUMBER: DWORD = 0x20000000;
+pub const MF_GRAYED: UINT = 0x0001;
+pub extern "kernel32" fn MoveFileExW(existing: PCWSTR, new: PCWSTR, flags: DWORD) callconv(.winapi) BOOL;
+pub extern "kernel32" fn DeleteFileW(path: PCWSTR) callconv(.winapi) BOOL;
+pub extern "shell32" fn ShellExecuteW(hwnd: HWND, op: ?PCWSTR, file: PCWSTR, params: ?PCWSTR, dir: ?PCWSTR, show: i32) callconv(.winapi) HINSTANCE;
+pub extern "winhttp" fn WinHttpQueryHeaders(req: HINTERNET, info: DWORD, name: ?PCWSTR, buffer: ?*anyopaque, len: *DWORD, index: ?*DWORD) callconv(.winapi) BOOL;
